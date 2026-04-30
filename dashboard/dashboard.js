@@ -50,61 +50,224 @@ class ErrorDashboard {
     }
 
     async fetchErrorDataFromS3(date) {
-        // This would be implemented with AWS SDK or API Gateway endpoint
-        // For now, return mock data
+        // Try to load real RCA data from the test file first
+        try {
+            const response = await fetch('./latest_rca_result.json');
+            if (response.ok) {
+                const realData = await response.json();
+                console.log('Loaded real RCA data from test file');
+                return [realData];
+            }
+        } catch (error) {
+            console.log('Could not load real RCA data, falling back to mock data');
+        }
+        
+        // Fallback to mock data
         return this.getMockErrorData(date);
     }
 
     getMockErrorData(date) {
         return [
             {
-                application_name: "payment-service",
-                alert_timestamp: `${date}T10:30:00Z`,
-                dependent_services: ["auth-service", "database-service", "notification-service"],
-                failed_services: [
+                alert_info: {
+                    service_name: "payment-service",
+                    error_code: "500",
+                    endpoint: "/api/payments/endpoint1",
+                    alert_timestamp: `${date}T10:30:00Z`
+                },
+                knowledge_analysis: {
+                    dependencies: {
+                        upstream_services: ["order-service", "user-service"],
+                        downstream_services: ["notification-service", "transaction-service"],
+                        related_services: ["auth-service", "account-service"]
+                    },
+                    past_incidents: [
+                        {
+                            incident_id: "INC-001",
+                            service_name: "payment-service",
+                            error_type: "Database connection timeout",
+                            root_cause: "Database connection pool exhaustion",
+                            resolution: "Increased connection pool size and added connection retry logic",
+                            timestamp: `${date}T09:30:00Z`,
+                            impact: "Service unavailable for 15 minutes"
+                        }
+                    ],
+                    analysis_timestamp: `${date}T10:40:00Z`
+                },
+                log_analysis: {
+                    primary_service_logs: [
+                        {
+                            log_id: "LOG-PAYMENT-SERVICE-001",
+                            service: "payment-service",
+                            timestamp: `${date}T10:15:00Z`,
+                            status_code: 500,
+                            error: "Database connection timeout",
+                            url: "/api/payments/endpoint1",
+                            level: "ERROR",
+                            message: "payment-service encountered Database connection timeout",
+                            duration_ms: 100,
+                            request_id: "REQ-0000-000"
+                        }
+                    ],
+                    related_service_logs: [],
+                    total_error_logs: 5,
+                    total_related_logs: 20,
+                    fetch_timestamp: `${date}T10:40:00Z`
+                },
+                rca_summary: {
+                    error_start_time: `${date}T10:15:00Z`,
+                    error_code: 500,
+                    impacted_dependencies: ["notification-service", "transaction-service"],
+                    endpoints: ["/api/payments/endpoint1"],
+                    cause_of_error: "Database connection pool exhaustion similar to past incident INC-001",
+                    action_taken: [
+                        "Increase database connection pool size",
+                        "Implement connection retry logic",
+                        "Check database server health"
+                    ],
+                    severity: "High",
+                    error_pattern: "Intermittent service failures detected",
+                    business_impact: "Service degradation affecting user experience"
+                },
+                ongoing_errors: [
                     {
-                        service_name: "database-service",
-                        error_code: "DB_CONNECTION_TIMEOUT",
-                        error_message: "Failed to connect to database within timeout period",
-                        timestamp: `${date}T10:29:45Z`
+                        service: "payment-service",
+                        timestamp: `${date}T10:38:00Z`,
+                        error: "Database connection timeout",
+                        status_code: 500,
+                        url: "/api/payments/endpoint1",
+                        severity: "High"
                     }
                 ],
-                service_hierarchy: [
-                    { service_name: "auth-service", status: "HEALTHY", error_count: 0 },
-                    { service_name: "database-service", status: "FAILED", error_count: 3 },
-                    { service_name: "notification-service", status: "HEALTHY", error_count: 0 }
-                ],
-                processed_at: `${date}T10:30:15Z`
+                processed_at: `${date}T10:45:00Z`,
+                dashboard_data: {
+                    failed_services: ["notification-service", "transaction-service"],
+                    impacted_endpoints: ["/api/payments/endpoint1"],
+                    severity: "High",
+                    business_impact: "Service degradation affecting user experience"
+                }
             },
             {
-                application_name: "user-service",
-                alert_timestamp: `${date}T09:15:00Z`,
-                dependent_services: ["auth-service", "profile-service"],
-                failed_services: [
+                alert_info: {
+                    service_name: "user-service",
+                    error_code: "401",
+                    endpoint: "/api/users/profile",
+                    alert_timestamp: `${date}T09:15:00Z`
+                },
+                knowledge_analysis: {
+                    dependencies: {
+                        upstream_services: ["auth-service"],
+                        downstream_services: ["profile-service"],
+                        related_services: ["notification-service"]
+                    },
+                    past_incidents: [
+                        {
+                            incident_id: "INC-002",
+                            service_name: "user-service",
+                            error_type: "Authentication token expiration",
+                            root_cause: "Token refresh mechanism failure",
+                            resolution: "Implemented automatic token refresh with retry logic",
+                            timestamp: `${date}T08:30:00Z`,
+                            impact: "Users unable to access profile information"
+                        }
+                    ],
+                    analysis_timestamp: `${date}T09:25:00Z`
+                },
+                log_analysis: {
+                    primary_service_logs: [
+                        {
+                            log_id: "LOG-USER-SERVICE-001",
+                            service: "user-service",
+                            timestamp: `${date}T09:14:30Z`,
+                            status_code: 401,
+                            error: "Authentication token expired",
+                            url: "/api/users/profile",
+                            level: "ERROR",
+                            message: "user-service encountered authentication token expiration",
+                            duration_ms: 50,
+                            request_id: "REQ-0001-000"
+                        }
+                    ],
+                    related_service_logs: [],
+                    total_error_logs: 3,
+                    total_related_logs: 15,
+                    fetch_timestamp: `${date}T09:25:00Z`
+                },
+                rca_summary: {
+                    error_start_time: `${date}T09:14:30Z`,
+                    error_code: 401,
+                    impacted_dependencies: ["profile-service"],
+                    endpoints: ["/api/users/profile"],
+                    cause_of_error: "Token refresh mechanism failure similar to past incident INC-002",
+                    action_taken: [
+                        "Implement automatic token refresh",
+                        "Add retry logic for failed authentication",
+                        "Monitor token expiration patterns"
+                    ],
+                    severity: "Medium",
+                    error_pattern: "Periodic authentication failures",
+                    business_impact: "User profile access temporarily unavailable"
+                },
+                ongoing_errors: [
                     {
-                        service_name: "auth-service",
-                        error_code: "AUTH_TOKEN_EXPIRED",
-                        error_message: "Authentication token has expired",
-                        timestamp: `${date}T09:14:30Z`
+                        service: "user-service",
+                        timestamp: `${date}T09:20:00Z`,
+                        error: "Authentication token expired",
+                        status_code: 401,
+                        url: "/api/users/profile",
+                        severity: "Medium"
                     }
                 ],
-                service_hierarchy: [
-                    { service_name: "auth-service", status: "FAILED", error_count: 5 },
-                    { service_name: "profile-service", status: "HEALTHY", error_count: 0 }
-                ],
-                processed_at: `${date}T09:15:10Z`
+                processed_at: `${date}T09:30:00Z`,
+                dashboard_data: {
+                    failed_services: ["profile-service"],
+                    impacted_endpoints: ["/api/users/profile"],
+                    severity: "Medium",
+                    business_impact: "User profile access temporarily unavailable"
+                }
             },
             {
-                application_name: "order-service",
-                alert_timestamp: `${date}T08:45:00Z`,
-                dependent_services: ["inventory-service", "payment-service", "shipping-service"],
-                failed_services: [],
-                service_hierarchy: [
-                    { service_name: "inventory-service", status: "HEALTHY", error_count: 0 },
-                    { service_name: "payment-service", status: "HEALTHY", error_count: 0 },
-                    { service_name: "shipping-service", status: "HEALTHY", error_count: 0 }
-                ],
-                processed_at: `${date}T08:45:05Z`
+                alert_info: {
+                    service_name: "order-service",
+                    error_code: "200",
+                    endpoint: "/api/orders/create",
+                    alert_timestamp: `${date}T08:45:00Z`
+                },
+                knowledge_analysis: {
+                    dependencies: {
+                        upstream_services: ["user-service", "inventory-service"],
+                        downstream_services: ["payment-service", "shipping-service"],
+                        related_services: ["notification-service"]
+                    },
+                    past_incidents: [],
+                    analysis_timestamp: `${date}T08:55:00Z`
+                },
+                log_analysis: {
+                    primary_service_logs: [],
+                    related_service_logs: [],
+                    total_error_logs: 0,
+                    total_related_logs: 10,
+                    fetch_timestamp: `${date}T08:55:00Z`
+                },
+                rca_summary: {
+                    error_start_time: null,
+                    error_code: null,
+                    impacted_dependencies: [],
+                    endpoints: [],
+                    cause_of_error: null,
+                    action_taken: [],
+                    severity: "Low",
+                    error_pattern: null,
+                    business_impact: "No impact detected"
+                },
+                ongoing_errors: [],
+                processed_at: `${date}T09:00:00Z`,
+                dashboard_data: {
+                    failed_services: [],
+                    impacted_endpoints: [],
+                    severity: "Low",
+                    business_impact: "No impact detected"
+                }
             }
         ];
     }
@@ -119,10 +282,11 @@ class ErrorDashboard {
 
     updateSummaryCards() {
         const totalAlerts = this.filteredData.length;
-        const allServices = this.filteredData.flatMap(item => item.service_hierarchy);
-        const failedServices = allServices.filter(service => service.status === 'FAILED').length;
-        const healthyServices = allServices.filter(service => service.status === 'HEALTHY').length;
-        const errorRate = totalServices > 0 ? ((failedServices / totalServices) * 100).toFixed(1) : 0;
+        const failedServices = this.filteredData.filter(item => 
+            item.dashboard_data.failed_services && item.dashboard_data.failed_services.length > 0
+        ).length;
+        const healthyServices = totalAlerts - failedServices;
+        const errorRate = totalAlerts > 0 ? ((failedServices / totalAlerts) * 100).toFixed(1) : 0;
 
         document.getElementById('totalAlerts').textContent = totalAlerts;
         document.getElementById('failedServices').textContent = failedServices;
@@ -143,23 +307,29 @@ class ErrorDashboard {
             return;
         }
 
-        timelineContainer.innerHTML = this.filteredData.map(item => `
-            <div class="flex space-x-4 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer service-card ${item.failed_services.length > 0 ? 'error-row' : 'healthy-row'}"
-                 onclick="dashboard.showErrorDetails('${item.application_name}', '${item.alert_timestamp}')">
+        timelineContainer.innerHTML = this.filteredData.map(item => {
+            const hasErrors = item.dashboard_data.failed_services && item.dashboard_data.failed_services.length > 0;
+            const severity = item.dashboard_data.severity || 'Low';
+            const severityColor = severity === 'High' ? 'red' : severity === 'Medium' ? 'yellow' : 'green';
+            
+            return `
+            <div class="flex space-x-4 p-4 border rounded-lg hover:bg-gray-50 cursor-pointer service-card ${hasErrors ? 'error-row' : 'healthy-row'}"
+                 onclick="dashboard.showErrorDetails('${item.alert_info.service_name}', '${item.alert_info.alert_timestamp}')">
                 <div class="flex-shrink-0">
-                    <div class="timeline-dot ${item.failed_services.length > 0 ? 'error-dot' : ''}"></div>
+                    <div class="timeline-dot ${hasErrors ? 'error-dot' : ''}"></div>
                 </div>
                 <div class="flex-1">
                     <div class="flex justify-between items-start">
                         <div>
-                            <h3 class="font-semibold text-gray-900">${item.application_name}</h3>
-                            <p class="text-sm text-gray-500">${this.formatTimestamp(item.alert_timestamp)}</p>
+                            <h3 class="font-semibold text-gray-900">${item.alert_info.service_name}</h3>
+                            <p class="text-sm text-gray-500">${this.formatTimestamp(item.alert_info.alert_timestamp)}</p>
+                            <p class="text-xs text-gray-400">Error Code: ${item.alert_info.error_code || 'N/A'}</p>
                         </div>
                         <div class="text-right">
-                            ${item.failed_services.length > 0 ? 
-                                `<span class="error-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            ${hasErrors ? 
+                                `<span class="error-badge inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${severityColor}-100 text-${severityColor}-800">
                                     <i class="fas fa-exclamation-triangle mr-1"></i>
-                                    ${item.failed_services.length} Failed
+                                    ${severity} Severity
                                 </span>` :
                                 `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                     <i class="fas fa-check-circle mr-1"></i>
@@ -168,15 +338,22 @@ class ErrorDashboard {
                             }
                         </div>
                     </div>
-                    ${item.failed_services.length > 0 ? `
-                        <div class="mt-2 text-sm text-red-600">
-                            <i class="fas fa-times-circle mr-1"></i>
-                            ${item.failed_services.map(fs => fs.service_name).join(', ')}
+                    ${hasErrors ? `
+                        <div class="mt-2 space-y-1">
+                            <div class="text-sm text-red-600">
+                                <i class="fas fa-times-circle mr-1"></i>
+                                Failed Services: ${item.dashboard_data.failed_services.join(', ')}
+                            </div>
+                            <div class="text-sm text-orange-600">
+                                <i class="fas fa-map-marker-alt mr-1"></i>
+                                Impacted Endpoints: ${item.dashboard_data.impacted_endpoints.join(', ')}
+                            </div>
                         </div>
                     ` : ''}
                 </div>
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     updateServiceFlow() {
@@ -192,31 +369,88 @@ class ErrorDashboard {
             return;
         }
 
-        flowContainer.innerHTML = this.filteredData.map(item => `
+        flowContainer.innerHTML = this.filteredData.map(item => {
+            const deps = item.knowledge_analysis.dependencies;
+            const hasErrors = item.dashboard_data.failed_services && item.dashboard_data.failed_services.length > 0;
+            
+            return `
             <div class="border rounded-lg p-4">
                 <div class="flex justify-between items-center mb-3">
-                    <h3 class="font-semibold text-gray-900">${item.application_name}</h3>
-                    <span class="text-sm text-gray-500">${this.formatTimestamp(item.alert_timestamp)}</span>
+                    <h3 class="font-semibold text-gray-900">${item.alert_info.service_name}</h3>
+                    <span class="text-sm text-gray-500">${this.formatTimestamp(item.alert_info.alert_timestamp)}</span>
                 </div>
-                <div class="space-y-2">
-                    ${item.service_hierarchy.map(service => `
-                        <div class="flex items-center justify-between p-2 rounded ${service.status === 'FAILED' ? 'bg-red-50' : 'bg-green-50'}">
-                            <div class="flex items-center space-x-2">
-                                <i class="fas ${service.status === 'FAILED' ? 'fa-times-circle text-red-600' : 'fa-check-circle text-green-600'}"></i>
-                                <span class="font-medium">${service.service_name}</span>
+                
+                <!-- Dependencies -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div class="bg-blue-50 p-3 rounded">
+                        <h4 class="font-medium text-blue-900 mb-2">
+                            <i class="fas fa-arrow-up mr-1"></i>Upstream Services
+                        </h4>
+                        <div class="space-y-1">
+                            ${(deps.upstream_services || []).map(service => `
+                                <div class="text-sm text-blue-700">• ${service}</div>
+                            `).join('')}
+                            ${!deps.upstream_services || deps.upstream_services.length === 0 ? 
+                                '<div class="text-sm text-gray-500">None</div>' : ''}
+                        </div>
+                    </div>
+                    
+                    <div class="bg-green-50 p-3 rounded">
+                        <h4 class="font-medium text-green-900 mb-2">
+                            <i class="fas fa-bullseye mr-1"></i>Service
+                        </h4>
+                        <div class="text-sm font-medium text-green-700">${item.alert_info.service_name}</div>
+                        <div class="text-xs text-gray-600">Endpoint: ${item.alert_info.endpoint || 'N/A'}</div>
+                    </div>
+                    
+                    <div class="bg-orange-50 p-3 rounded">
+                        <h4 class="font-medium text-orange-900 mb-2">
+                            <i class="fas fa-arrow-down mr-1"></i>Downstream Services
+                        </h4>
+                        <div class="space-y-1">
+                            ${(deps.downstream_services || []).map(service => `
+                                <div class="text-sm text-orange-700">• ${service}</div>
+                            `).join('')}
+                            ${!deps.downstream_services || deps.downstream_services.length === 0 ? 
+                                '<div class="text-sm text-gray-500">None</div>' : ''}
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- RCA Summary -->
+                ${hasErrors ? `
+                    <div class="bg-red-50 border border-red-200 rounded p-3">
+                        <h4 class="font-medium text-red-900 mb-2">
+                            <i class="fas fa-exclamation-triangle mr-1"></i>RCA Analysis
+                        </h4>
+                        <div class="space-y-2">
+                            <div class="text-sm">
+                                <strong>Root Cause:</strong> ${item.rca_summary.cause_of_error || 'Unknown'}
                             </div>
-                            <div class="flex items-center space-x-4">
-                                <span class="text-sm ${service.status === 'FAILED' ? 'text-red-600' : 'text-green-600'}">${service.status}</span>
-                                ${service.error_count > 0 ? 
-                                    `<span class="text-sm text-red-600">${service.error_count} errors</span>` : 
-                                    `<span class="text-sm text-gray-500">0 errors</span>`
-                                }
+                            <div class="text-sm">
+                                <strong>Recommended Actions:</strong>
+                                <ul class="list-disc list-inside mt-1">
+                                    ${(item.rca_summary.action_taken || []).map(action => `
+                                        <li>${action}</li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                            <div class="text-sm">
+                                <strong>Business Impact:</strong> ${item.dashboard_data.business_impact}
                             </div>
                         </div>
-                    `).join('')}
-                </div>
+                    </div>
+                ` : `
+                    <div class="bg-green-50 border border-green-200 rounded p-3">
+                        <h4 class="font-medium text-green-900 mb-2">
+                            <i class="fas fa-check-circle mr-1"></i>Service Status
+                        </h4>
+                        <div class="text-sm text-green-700">No issues detected - Service is operating normally</div>
+                    </div>
+                `}
             </div>
-        `).join('');
+        `;
+        }).join('');
     }
 
     updateServiceFilter() {
@@ -224,9 +458,18 @@ class ErrorDashboard {
         const allServices = new Set();
         
         this.errorData.forEach(item => {
-            item.service_hierarchy.forEach(service => {
-                allServices.add(service.service_name);
-            });
+            allServices.add(item.alert_info.service_name);
+            // Also add dependency services
+            const deps = item.knowledge_analysis.dependencies;
+            if (deps.upstream_services) {
+                deps.upstream_services.forEach(service => allServices.add(service));
+            }
+            if (deps.downstream_services) {
+                deps.downstream_services.forEach(service => allServices.add(service));
+            }
+            if (deps.related_services) {
+                deps.related_services.forEach(service => allServices.add(service));
+            }
         });
 
         const currentValue = serviceFilter.value;
@@ -246,22 +489,23 @@ class ErrorDashboard {
 
         this.filteredData = this.errorData.filter(item => {
             // Date filter
-            const itemDate = item.alert_timestamp.split('T')[0];
+            const itemDate = item.alert_info.alert_timestamp.split('T')[0];
             if (dateFilter && itemDate !== dateFilter) return false;
 
             // Service filter
             if (serviceFilter) {
-                const hasService = item.service_hierarchy.some(service => 
-                    service.service_name === serviceFilter
-                );
+                const hasService = item.alert_info.service_name === serviceFilter ||
+                    item.knowledge_analysis.dependencies.upstream_services?.includes(serviceFilter) ||
+                    item.knowledge_analysis.dependencies.downstream_services?.includes(serviceFilter) ||
+                    item.knowledge_analysis.dependencies.related_services?.includes(serviceFilter);
                 if (!hasService) return false;
             }
 
-            // Status filter
+            // Status filter (based on severity)
             if (statusFilter) {
-                const hasStatus = item.service_hierarchy.some(service => 
-                    service.status === statusFilter
-                );
+                const severity = item.dashboard_data.severity;
+                const hasStatus = (statusFilter === 'FAILED' && severity !== 'Low') ||
+                                (statusFilter === 'HEALTHY' && severity === 'Low');
                 if (!hasStatus) return false;
             }
 
@@ -273,7 +517,7 @@ class ErrorDashboard {
 
     showErrorDetails(applicationName, timestamp) {
         const errorItem = this.filteredData.find(item => 
-            item.application_name === applicationName && item.alert_timestamp === timestamp
+            item.alert_info.service_name === applicationName && item.alert_info.alert_timestamp === timestamp
         );
 
         if (!errorItem) return;
@@ -282,40 +526,73 @@ class ErrorDashboard {
         modalContent.innerHTML = `
             <div class="space-y-4">
                 <div class="border-b pb-4">
-                    <h4 class="font-semibold text-gray-900 mb-2">Application: ${errorItem.application_name}</h4>
-                    <p class="text-sm text-gray-600">Alert Time: ${this.formatTimestamp(errorItem.alert_timestamp)}</p>
+                    <h4 class="font-semibold text-gray-900 mb-2">Service: ${errorItem.alert_info.service_name}</h4>
+                    <p class="text-sm text-gray-600">Alert Time: ${this.formatTimestamp(errorItem.alert_info.alert_timestamp)}</p>
+                    <p class="text-sm text-gray-600">Error Code: ${errorItem.alert_info.error_code || 'N/A'}</p>
+                    <p class="text-sm text-gray-600">Endpoint: ${errorItem.alert_info.endpoint || 'N/A'}</p>
                     <p class="text-sm text-gray-600">Processed: ${this.formatTimestamp(errorItem.processed_at)}</p>
                 </div>
                 
                 <div>
-                    <h5 class="font-medium text-gray-900 mb-2">Service Flow</h5>
-                    <div class="space-y-2">
-                        ${errorItem.service_hierarchy.map(service => `
-                            <div class="flex items-center justify-between p-2 rounded ${service.status === 'FAILED' ? 'bg-red-50' : 'bg-green-50'}">
-                                <div class="flex items-center space-x-2">
-                                    <i class="fas ${service.status === 'FAILED' ? 'fa-times-circle text-red-600' : 'fa-check-circle text-green-600'}"></i>
-                                    <span class="font-medium">${service.service_name}</span>
-                                </div>
-                                <span class="text-sm ${service.status === 'FAILED' ? 'text-red-600' : 'text-green-600'}">${service.status}</span>
-                            </div>
-                        `).join('')}
+                    <h5 class="font-medium text-gray-900 mb-2">Dependencies</h5>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-blue-50 p-3 rounded">
+                            <h6 class="font-medium text-blue-900 mb-2">Upstream Services</h6>
+                            ${(errorItem.knowledge_analysis.dependencies.upstream_services || []).map(service => `
+                                <div class="text-sm text-blue-700">• ${service}</div>
+                            `).join('')}
+                            ${!errorItem.knowledge_analysis.dependencies.upstream_services || errorItem.knowledge_analysis.dependencies.upstream_services.length === 0 ? 
+                                '<div class="text-sm text-gray-500">None</div>' : ''}
+                        </div>
+                        <div class="bg-green-50 p-3 rounded">
+                            <h6 class="font-medium text-green-900 mb-2">Service</h6>
+                            <div class="text-sm font-medium text-green-700">${errorItem.alert_info.service_name}</div>
+                            <div class="text-xs text-gray-600">Endpoint: ${errorItem.alert_info.endpoint || 'N/A'}</div>
+                        </div>
+                        <div class="bg-orange-50 p-3 rounded">
+                            <h6 class="font-medium text-orange-900 mb-2">Downstream Services</h6>
+                            ${(errorItem.knowledge_analysis.dependencies.downstream_services || []).map(service => `
+                                <div class="text-sm text-orange-700">• ${service}</div>
+                            `).join('')}
+                            ${!errorItem.knowledge_analysis.dependencies.downstream_services || errorItem.knowledge_analysis.dependencies.downstream_services.length === 0 ? 
+                                '<div class="text-sm text-gray-500">None</div>' : ''}
+                        </div>
                     </div>
                 </div>
                 
-                ${errorItem.failed_services.length > 0 ? `
+                ${errorItem.knowledge_analysis.past_incidents && errorItem.knowledge_analysis.past_incidents.length > 0 ? `
                     <div>
-                        <h5 class="font-medium text-gray-900 mb-2">Error Details</h5>
+                        <h5 class="font-medium text-gray-900 mb-2">Past Incidents</h5>
                         <div class="space-y-3">
-                            ${errorItem.failed_services.map(failedService => `
-                                <div class="border rounded-lg p-3 bg-red-50">
+                            ${errorItem.knowledge_analysis.past_incidents.map(incident => `
+                                <div class="border rounded-lg p-3 bg-yellow-50">
                                     <div class="flex justify-between items-start mb-2">
-                                        <h6 class="font-medium text-red-900">${failedService.service_name}</h6>
-                                        <span class="text-xs text-red-600">${failedService.error_code}</span>
+                                        <h6 class="font-medium text-yellow-900">${incident.incident_id}</h6>
+                                        <span class="text-xs text-yellow-600">${this.formatTimestamp(incident.timestamp)}</span>
                                     </div>
-                                    <p class="text-sm text-red-800 mb-1">${failedService.error_message}</p>
-                                    <p class="text-xs text-red-600">${this.formatTimestamp(failedService.timestamp)}</p>
+                                    <p class="text-sm text-yellow-800 mb-1"><strong>Error Type:</strong> ${incident.error_type}</p>
+                                    <p class="text-sm text-yellow-800 mb-1"><strong>Root Cause:</strong> ${incident.root_cause}</p>
+                                    <p class="text-sm text-yellow-800 mb-1"><strong>Resolution:</strong> ${incident.resolution}</p>
+                                    <p class="text-sm text-yellow-600"><strong>Impact:</strong> ${incident.impact}</p>
                                 </div>
                             `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${errorItem.rca_summary.cause_of_error ? `
+                    <div>
+                        <h5 class="font-medium text-gray-900 mb-2">RCA Analysis</h5>
+                        <div class="border rounded-lg p-3 bg-red-50">
+                            <p class="text-sm text-red-800 mb-2"><strong>Root Cause:</strong> ${errorItem.rca_summary.cause_of_error}</p>
+                            <p class="text-sm text-red-800 mb-2"><strong>Error Pattern:</strong> ${errorItem.rca_summary.error_pattern || 'N/A'}</p>
+                            <p class="text-sm text-red-800 mb-2"><strong>Business Impact:</strong> ${errorItem.dashboard_data.business_impact}</p>
+                            <p class="text-sm text-red-800 mb-2"><strong>Recommended Actions:</strong></p>
+                            <ul class="list-disc list-inside text-sm text-red-800">
+                                ${(errorItem.rca_summary.action_taken || []).map(action => `
+                                    <li>${action}</li>
+                                `).join('')}
+                            </ul>
                         </div>
                     </div>
                 ` : ''}

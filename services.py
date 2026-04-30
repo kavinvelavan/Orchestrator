@@ -1,5 +1,6 @@
 import json
 import boto3
+import requests
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional
 import logging
@@ -205,6 +206,115 @@ class WebhookProcessor:
         return app_name, timestamp
     
     @staticmethod
+    def parse_newrelic_alert(event: Dict[str, Any]) -> Dict[str, Any]:
+        """Parse New Relic alert payload to extract service details"""
+        if 'body' in event:
+            try:
+                body = json.loads(event['body'])
+            except json.JSONDecodeError:
+                body = event['body']
+        else:
+            body = event
+        
+        if not isinstance(body, dict):
+            raise ValueError("Invalid payload format. Expected JSON object.")
+        
+        # Extract New Relic alert data
+        service_name = body.get('service_name') or body.get('application_name') or body.get('entity_name')
+        error_code = body.get('error_code') or body.get('status_code')
+        endpoint = body.get('endpoint') or body.get('url') or body.get('path')
+        timestamp = body.get('timestamp') or body.get('openedAt') or datetime.now(timezone.utc).isoformat()
+        
+        if not service_name:
+            raise ValueError("Missing required field: service_name/application_name/entity_name")
+        
+        # Validate and normalize timestamp
+        try:
+            if 'T' in timestamp and ('Z' in timestamp or '+' in timestamp):
+                parsed_timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            else:
+                parsed_timestamp = datetime.fromisoformat(timestamp)
+            timestamp = parsed_timestamp.isoformat()
+        except ValueError:
+            timestamp = datetime.now(timezone.utc).isoformat()
+        
+        return {
+            'service_name': service_name,
+            'error_code': error_code,
+            'endpoint': endpoint,
+            'timestamp': timestamp,
+            'raw_payload': body
+        }
+    
+    @staticmethod
+    def calculate_start_time(end_time: str, minutes_before: int = 15) -> str:
+        """Calculate start time by subtracting minutes from end time"""
+        try:
+            end_timestamp = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+            start_timestamp = end_timestamp - timedelta(minutes=minutes_before)
+            return start_timestamp.isoformat()
+        except ValueError:
+            # Fallback to current time if parsing fails
+            return (datetime.now(timezone.utc) - timedelta(minutes=minutes_before)).isoformat()
+    
+    @staticmethod
+    def create_rca_response(alert_data: Dict[str, Any], knowledge_result: Dict[str, Any], 
+                           log_result: Dict[str, Any], rca_summary: Dict[str, Any]) -> Dict[str, Any]:
+        """Create comprehensive RCA response combining all results"""
+        return {
+            'alert_info': {
+                'service_name': alert_data['service_name'],
+                'error_code': alert_data['error_code'],
+                'endpoint': alert_data['endpoint'],
+                'alert_timestamp': alert_data['timestamp']
+            },
+            'knowledge_analysis': {
+                'dependencies': knowledge_result.get('dependencies', {}),
+                'past_incidents': knowledge_result.get('past_incidents', []),
+                'analysis_timestamp': knowledge_result.get('analysis_timestamp')
+            },
+            'log_analysis': {
+                'primary_service_logs': log_result.get('primary_service_logs', []),
+                'related_service_logs': log_result.get('related_service_logs', []),
+                'total_error_logs': log_result.get('total_error_logs', 0),
+                'fetch_timestamp': log_result.get('fetch_timestamp')
+            },
+            'rca_summary': rca_summary.get('rca_summary', {}),
+            'ongoing_errors': rca_summary.get('ongoing_errors', []),
+            'processed_at': datetime.now(timezone.utc).isoformat(),
+            'dashboard_data': {
+                'failed_services': WebhookProcessor._extract_failed_services(rca_summary),
+                'impacted_endpoints': WebhookProcessor._extract_impacted_endpoints(rca_summary),
+                'severity': WebhookProcessor._extract_severity(rca_summary),
+                'business_impact': WebhookProcessor._extract_business_impact(rca_summary)
+            }
+        }
+    
+    @staticmethod
+    def _extract_failed_services(rca_summary: Dict[str, Any]) -> List[str]:
+        """Extract failed services from RCA summary"""
+        rca_data = rca_summary.get('rca_summary', {})
+        return rca_data.get('impacted_dependencies', [])
+    
+    @staticmethod
+    def _extract_impacted_endpoints(rca_summary: Dict[str, Any]) -> List[str]:
+        """Extract impacted endpoints from RCA summary"""
+        rca_data = rca_summary.get('rca_summary', {})
+        return rca_data.get('endpoints', [])
+    
+    @staticmethod
+    def _extract_severity(rca_summary: Dict[str, Any]) -> str:
+        """Extract severity from RCA summary"""
+        rca_data = rca_summary.get('rca_summary', {})
+        return rca_data.get('severity', 'Unknown')
+    
+    @staticmethod
+    def _extract_business_impact(rca_summary: Dict[str, Any]) -> str:
+        """Extract business impact from RCA summary"""
+        rca_data = rca_summary.get('rca_summary', {})
+        return rca_data.get('business_impact', 'Not specified')
+    
+    @staticmethod
     def create_error_response(app_name: str, timestamp: str, dependent_services: List[str], 
                             error_logs: Dict[str, Any]) -> Dict[str, Any]:
         """Create standardized error response"""
@@ -258,3 +368,110 @@ class WebhookProcessor:
             })
         
         return hierarchy
+
+class RCABotService:
+    """Service for integrating with RCA Bot API"""
+    
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip('/')
+        self.session = requests.Session()
+        self.session.headers.update({
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        })
+        
+    def extract_document(self, service_name: str) -> Dict[str, Any]:
+        """Call RCA bot document extraction service"""
+        try:
+            url = f"{self.base_url}/extract-document"
+            payload = {"service_name": service_name}
+            
+            logger.info(f"Calling RCA bot document extraction for service: {service_name}")
+            response = self.session.post(url, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(f"Successfully extracted document data for {service_name}")
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error calling RCA bot document extraction: {str(e)}")
+            raise Exception(f"Failed to extract document data: {str(e)}")
+    
+    def fetch_logs(self, service_name: str, start_time: str, end_time: str) -> Dict[str, Any]:
+        """Call RCA bot log fetching service"""
+        try:
+            url = f"{self.base_url}/fetch-logs"
+            payload = {
+                "service_name": service_name,
+                "start_time": start_time,
+                "end_time": end_time
+            }
+            
+            logger.info(f"Calling RCA bot log fetching for service: {service_name}")
+            response = self.session.post(url, json=payload, timeout=30)
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(f"Successfully fetched logs for {service_name}")
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error calling RCA bot log fetching: {str(e)}")
+            raise Exception(f"Failed to fetch logs: {str(e)}")
+    
+    def train_analyze(self, service_name: str, document_data: Dict[str, Any], 
+                     log_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Call RCA bot training and analysis service"""
+        try:
+            url = f"{self.base_url}/train-analyze"
+            payload = {
+                "service_name": service_name,
+                "document_data": document_data,
+                "log_data": log_data
+            }
+            
+            logger.info(f"Calling RCA bot training and analysis for service: {service_name}")
+            response = self.session.post(url, json=payload, timeout=60)
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(f"Successfully completed RCA analysis for {service_name}")
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error calling RCA bot training and analysis: {str(e)}")
+            raise Exception(f"Failed to complete RCA analysis: {str(e)}")
+    
+    def complete_flow(self, service_name: str, start_time: str, end_time: str) -> Dict[str, Any]:
+        """Call RCA bot complete flow service"""
+        try:
+            url = f"{self.base_url}/complete-flow"
+            payload = {
+                "service_name": service_name,
+                "start_time": start_time,
+                "end_time": end_time
+            }
+            
+            logger.info(f"Calling RCA bot complete flow for service: {service_name}")
+            response = self.session.post(url, json=payload, timeout=90)
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(f"Successfully completed RCA flow for {service_name}")
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error calling RCA bot complete flow: {str(e)}")
+            raise Exception(f"Failed to complete RCA flow: {str(e)}")
+    
+    def health_check(self) -> Dict[str, Any]:
+        """Check RCA bot health"""
+        try:
+            url = f"{self.base_url}/health"
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"RCA bot health check failed: {str(e)}")
+            return {"status": "unhealthy", "error": str(e)}
